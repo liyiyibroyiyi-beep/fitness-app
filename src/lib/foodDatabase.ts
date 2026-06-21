@@ -68,6 +68,8 @@ export const FOOD_DATABASE: FoodItem[] = [
   { id: "olive-oil", name: "橄榄油", category: "零食", proteinPer100g: 0, carbsPer100g: 0, fatPer100g: 99.9, kcalPer100g: 899 },
   { id: "honey", name: "蜂蜜", category: "零食", proteinPer100g: 0.3, carbsPer100g: 82.0, fatPer100g: 0, kcalPer100g: 329 },
   { id: "rice-cake", name: "米饼", category: "零食", proteinPer100g: 7.0, carbsPer100g: 80.0, fatPer100g: 2.0, kcalPer100g: 366 },
+  { id: "sesame", name: "芝麻", category: "零食", proteinPer100g: 19.1, carbsPer100g: 18.3, fatPer100g: 52.7, kcalPer100g: 624 },
+  { id: "nuts-mixed", name: "坚果(混合)", category: "零食", proteinPer100g: 16.9, carbsPer100g: 20, fatPer100g: 55.4, kcalPer100g: 646 },
 ];
 
 /** Fast lookup map: foodId → FoodItem */

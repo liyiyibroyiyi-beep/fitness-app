@@ -31,6 +31,114 @@ import type {
 
 // ---- Sub-components ----
 
+/** Calendar showing check-in marks for the current month */
+function CheckInCalendar() {
+  const logs = useFitnessStore((s) => s.logs);
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth(); // 0-indexed
+  const today = now.getDate();
+
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Monday-start offset (0=Mon … 6=Sun)
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+
+  const weeks: (number | null)[][] = [];
+  let day = 1;
+  for (let w = 0; w < 6 && day <= daysInMonth; w++) {
+    const week: (number | null)[] = [];
+    for (let d = 0; d < 7; d++) {
+      if ((w === 0 && d < startOffset) || day > daysInMonth) {
+        week.push(null);
+      } else {
+        week.push(day++);
+      }
+    }
+    weeks.push(week);
+  }
+
+  const hasCheckIn = (d: number): boolean => {
+    const mm = String(month + 1).padStart(2, "0");
+    const dd = String(d).padStart(2, "0");
+    return `${year}-${mm}-${dd}` in logs;
+  };
+
+  const monthNames = [
+    "1月", "2月", "3月", "4月", "5月", "6月",
+    "7月", "8月", "9月", "10月", "11月", "12月",
+  ];
+  const dayHeaders = ["一", "二", "三", "四", "五", "六", "日"];
+
+  const checkedCount = Object.keys(logs).filter((k) =>
+    k.startsWith(`${year}-${String(month + 1).padStart(2, "0")}`)
+  ).length;
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-zinc-300">
+          {year}年 {monthNames[month]}
+        </h3>
+        <span className="text-[10px] text-zinc-500">
+          本月打卡 {checkedCount}/{daysInMonth} 天
+        </span>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {dayHeaders.map((h, i) => (
+          <div
+            key={i}
+            className={`text-center text-[10px] py-1 ${
+              i >= 5 ? "text-zinc-500" : "text-zinc-600"
+            }`}
+          >
+            {h}
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      {weeks.map((week, wi) => (
+        <div key={wi} className="grid grid-cols-7">
+          {week.map((d, di) => {
+            if (d === null) {
+              return <div key={di} className="aspect-square" />;
+            }
+            const checked = hasCheckIn(d);
+            const isToday = d === today;
+
+            return (
+              <div
+                key={di}
+                className="aspect-square flex flex-col items-center justify-center relative"
+              >
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
+                    isToday
+                      ? "bg-amber-500 text-black font-bold shadow-lg shadow-amber-500/20"
+                      : checked
+                        ? "bg-amber-500/10 text-amber-300 border border-amber-500/30"
+                        : "text-zinc-500"
+                  }`}
+                >
+                  {d}
+                </div>
+                {checked && !isToday && (
+                  <div className="absolute bottom-0.5 w-1 h-1 rounded-full bg-amber-500/60" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Weight input modal for daily check-in */
 function CheckInModal({
   open,
@@ -178,17 +286,17 @@ function NutritionDashboard({ targets }: { targets: NutritionTargets }) {
           >
             {total.kcal > 0
               ? inSurplus
-                ? `✓ 盈余 ${surplusPct.toFixed(1)}% (目标 15%-20%)`
+                ? `✓ 盈余 ${surplusPct.toFixed(1)}% (目标 10%)`
                 : `⚠ 盈余 ${surplusPct.toFixed(1)}% (未达标)`
               : "尚未录入饮食"}
           </span>
         </div>
         {/* Multi-zone progress bar */}
         <div className="h-3 bg-zinc-800 rounded-full overflow-hidden relative">
-          {/* 15%-20% target zone highlight */}
+          {/* 10% target zone highlight */}
           <div
             className="absolute h-full bg-emerald-500/20 border-l border-r border-emerald-500/50"
-            style={{ left: "15%", width: "5%" }}
+            style={{ left: "10%", width: "2%" }}
           />
           {/* Actual fill */}
           <div
@@ -843,11 +951,13 @@ export default function AdminPage() {
     <main className="min-h-screen bg-zinc-950 text-white">
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* ---- Header ---- */}
-        <header className="flex items-center justify-between mb-6">
+        <header className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-black tracking-tight">健身控制台</h1>
             <p className="text-xs text-zinc-500 mt-0.5">
-              {latestWeight ? `今日体重: ${latestWeight}kg` : "尚未打卡"}
+              {latestWeight
+                ? `今日体重: ${latestWeight}kg · ${new Date().getFullYear()}年${new Date().getMonth() + 1}月${new Date().getDate()}日`
+                : `尚未打卡 · ${new Date().getFullYear()}年${new Date().getMonth() + 1}月${new Date().getDate()}日`}
             </p>
           </div>
           <button
@@ -861,6 +971,11 @@ export default function AdminPage() {
             {hasCheckedInToday() ? "✓ 已打卡" : "今日打卡"}
           </button>
         </header>
+
+        {/* ---- Calendar ---- */}
+        <section className="mb-6">
+          <CheckInCalendar />
+        </section>
 
         {/* ---- Sections ---- */}
         <div className="space-y-6">

@@ -6,9 +6,9 @@
 //
 // 计算公式:
 //   BMR  = 10 * W + 998.75
-//   TDEE = BMR * 1.5
-//   热量盈余目标: 15% ~ 20%
-//   蛋白质 = W * 2.6, 碳水 = W * 4.3, 脂肪 = W * 1.6
+//   TDEE = 2250 (固定值)
+//   热量盈余目标: 10% → 总摄入 2500 kcal
+//   蛋白质 = W * 2.6, 碳水 = W * 4.3, 脂肪 = W * 1.25
 //
 //   热量自动计算: kcal = 蛋白质*4 + 碳水*4 + 脂肪*9
 // ============================================================
@@ -128,12 +128,12 @@ function nowISO(): string {
 /** Compute nutrition targets from a given weight */
 export function computeNutrition(weight: number): NutritionTargets {
   const bmr = 10 * weight + 998.75;
-  const tdee = bmr * ACTIVITY_COEFFICIENT;
+  const TDEE = 2250; // Fixed TDEE
   return {
     bmr: Math.round(bmr * 100) / 100,
-    tdee: Math.round(tdee * 100) / 100,
-    surplusLow: Math.round(tdee * 1.15 * 100) / 100,
-    surplusHigh: Math.round(tdee * 1.20 * 100) / 100,
+    tdee: TDEE,
+    surplusLow: 2500,  // TDEE + 10% surplus
+    surplusHigh: 2500,
     proteinG: Math.round(weight * 2.6 * 10) / 10,
     carbsG: Math.round(weight * 4.3 * 10) / 10,
     fatG: Math.round(weight * 1.25 * 10) / 10,
