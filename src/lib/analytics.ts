@@ -162,21 +162,21 @@ export function computeWeekSummary(
 
   // Macros averages (only from days with meal data)
   const mealDays = weekMeals.filter((m) => {
-    const total = m.breakfast.kcal + m.lunch.kcal + m.dinner.kcal + m.snack.kcal;
+    const total = (m.breakfast?.kcal ?? 0) + (m.lunch?.kcal ?? 0) + (m.dinner?.kcal ?? 0) + (m.snack?.kcal ?? 0);
     return total > 0;
   });
 
   const avgProtein = mealDays.length > 0
-    ? Math.round(mealDays.reduce((s, m) => s + m.breakfast.protein + m.lunch.protein + m.dinner.protein + m.snack.protein, 0) / mealDays.length * 10) / 10
+    ? Math.round(mealDays.reduce((s, m) => s + (m.breakfast?.protein ?? 0) + (m.lunch?.protein ?? 0) + (m.dinner?.protein ?? 0) + (m.snack?.protein ?? 0), 0) / mealDays.length * 10) / 10
     : null;
   const avgCarbs = mealDays.length > 0
-    ? Math.round(mealDays.reduce((s, m) => s + m.breakfast.carbs + m.lunch.carbs + m.dinner.carbs + m.snack.carbs, 0) / mealDays.length * 10) / 10
+    ? Math.round(mealDays.reduce((s, m) => s + (m.breakfast?.carbs ?? 0) + (m.lunch?.carbs ?? 0) + (m.dinner?.carbs ?? 0) + (m.snack?.carbs ?? 0), 0) / mealDays.length * 10) / 10
     : null;
   const avgFat = mealDays.length > 0
-    ? Math.round(mealDays.reduce((s, m) => s + m.breakfast.fat + m.lunch.fat + m.dinner.fat + m.snack.fat, 0) / mealDays.length * 10) / 10
+    ? Math.round(mealDays.reduce((s, m) => s + (m.breakfast?.fat ?? 0) + (m.lunch?.fat ?? 0) + (m.dinner?.fat ?? 0) + (m.snack?.fat ?? 0), 0) / mealDays.length * 10) / 10
     : null;
   const avgKcal = mealDays.length > 0
-    ? Math.round(mealDays.reduce((s, m) => s + m.breakfast.kcal + m.lunch.kcal + m.dinner.kcal + m.snack.kcal, 0) / mealDays.length * 10) / 10
+    ? Math.round(mealDays.reduce((s, m) => s + (m.breakfast?.kcal ?? 0) + (m.lunch?.kcal ?? 0) + (m.dinner?.kcal ?? 0) + (m.snack?.kcal ?? 0), 0) / mealDays.length * 10) / 10
     : null;
 
   return {
@@ -538,20 +538,20 @@ export function computeHalfMonthSummary(
 
   // Macros
   const mealDays = periodMeals.filter((m) => {
-    return (m.breakfast.kcal + m.lunch.kcal + m.dinner.kcal + m.snack.kcal) > 0;
+    return ((m.breakfast?.kcal ?? 0) + (m.lunch?.kcal ?? 0) + (m.dinner?.kcal ?? 0) + (m.snack?.kcal ?? 0)) > 0;
   });
 
   const avgProtein = mealDays.length > 0
-    ? Math.round(mealDays.reduce((s, m) => s + m.breakfast.protein + m.lunch.protein + m.dinner.protein + m.snack.protein, 0) / mealDays.length * 10) / 10
+    ? Math.round(mealDays.reduce((s, m) => s + (m.breakfast?.protein ?? 0) + (m.lunch?.protein ?? 0) + (m.dinner?.protein ?? 0) + (m.snack?.protein ?? 0), 0) / mealDays.length * 10) / 10
     : null;
   const avgCarbs = mealDays.length > 0
-    ? Math.round(mealDays.reduce((s, m) => s + m.breakfast.carbs + m.lunch.carbs + m.dinner.carbs + m.snack.carbs, 0) / mealDays.length * 10) / 10
+    ? Math.round(mealDays.reduce((s, m) => s + (m.breakfast?.carbs ?? 0) + (m.lunch?.carbs ?? 0) + (m.dinner?.carbs ?? 0) + (m.snack?.carbs ?? 0), 0) / mealDays.length * 10) / 10
     : null;
   const avgFat = mealDays.length > 0
-    ? Math.round(mealDays.reduce((s, m) => s + m.breakfast.fat + m.lunch.fat + m.dinner.fat + m.snack.fat, 0) / mealDays.length * 10) / 10
+    ? Math.round(mealDays.reduce((s, m) => s + (m.breakfast?.fat ?? 0) + (m.lunch?.fat ?? 0) + (m.dinner?.fat ?? 0) + (m.snack?.fat ?? 0), 0) / mealDays.length * 10) / 10
     : null;
   const avgKcal = mealDays.length > 0
-    ? Math.round(mealDays.reduce((s, m) => s + m.breakfast.kcal + m.lunch.kcal + m.dinner.kcal + m.snack.kcal, 0) / mealDays.length * 10) / 10
+    ? Math.round(mealDays.reduce((s, m) => s + (m.breakfast?.kcal ?? 0) + (m.lunch?.kcal ?? 0) + (m.dinner?.kcal ?? 0) + (m.snack?.kcal ?? 0), 0) / mealDays.length * 10) / 10
     : null;
 
   return {

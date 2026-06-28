@@ -8,7 +8,7 @@
 //   2. 中间: 体重走势迷你图 + 今日宏量营养素达成率
 // ============================================================
 
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import {
   useFitnessStore,
   computeNutrition,
@@ -197,8 +197,18 @@ export default function SharePage() {
   const prRecords = useFitnessStore((s) => s.prRecords);
   const streak = useFitnessStore((s) => s.streak);
   const todayMeals = useFitnessStore((s) => s.meals);
+  const loaded = useFitnessStore((s) => s.loaded);
+  const loading = useFitnessStore((s) => s.loading);
+  const loadData = useFitnessStore((s) => s.loadData);
+
+  useEffect(() => {
+    if (!loaded && !loading) {
+      loadData();
+    }
+  }, [loaded, loading, loadData]);
   // Derive today's meals from meals data so component re-renders on change
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const emptySlot = () => ({ foods: [] as never[], protein: 0, carbs: 0, fat: 0, kcal: 0 });
   const meals = todayMeals[todayKey] ?? { breakfast: emptySlot(), lunch: emptySlot(), dinner: emptySlot(), snack: emptySlot() };
 
@@ -274,6 +284,14 @@ export default function SharePage() {
     back: { label: "背", emoji: "🦅" },
     shoulder: { label: "肩膀", emoji: "🔥" },
   };
+
+  if (!loaded) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+        <div className="text-zinc-500 text-sm">加载数据中…</div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">

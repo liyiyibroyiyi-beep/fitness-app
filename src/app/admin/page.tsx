@@ -9,7 +9,7 @@
 //   3. 大重量力量训练日志 → 三Tab标签页(胸/背/肩膀) + 快速添加组数/重量/次数
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   useFitnessStore,
   computeNutrition,
@@ -17,7 +17,7 @@ import {
   getAllExercisesByCategory,
   getExerciseName,
 } from "@/stores/useFitnessStore";
-import { searchFoods, getFoodById } from "@/lib/foodDatabase";
+import { searchFoods, getFoodById, getAllFoods } from "@/lib/foodDatabase";
 import PRCelebrationOverlay from "@/components/PRCelebrationOverlay";
 import type {
   NutritionTargets,
@@ -27,12 +27,17 @@ import type {
   MealEntry,
   MealFoodEntry,
   FoodItem,
+  FoodCategory,
 } from "@/lib/types";
 
 // ---- Sub-components ----
 
-/** Calendar showing check-in marks for the current month */
-function CheckInCalendar() {
+/** Calendar showing check-in marks for the current month — days are clickable for backfill */
+function CheckInCalendar({
+  onDayClick,
+}: {
+  onDayClick?: (dateKey: string, existingWeight?: number) => void;
+}) {
   const logs = useFitnessStore((s) => s.logs);
 
   const now = new Date();
@@ -110,23 +115,34 @@ function CheckInCalendar() {
             }
             const checked = hasCheckIn(d);
             const isToday = d === today;
+            const mm = String(month + 1).padStart(2, "0");
+            const dd = String(d).padStart(2, "0");
+            const dateKey = `${year}-${mm}-${dd}`;
+            const now2 = new Date();
+            const todayKey = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, "0")}-${String(now2.getDate()).padStart(2, "0")}`;
+            const isFuture = dateKey > todayKey;
 
             return (
               <div
                 key={di}
                 className="aspect-square flex flex-col items-center justify-center relative"
               >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
-                    isToday
-                      ? "bg-amber-500 text-black font-bold shadow-lg shadow-amber-500/20"
-                      : checked
-                        ? "bg-amber-500/10 text-amber-300 border border-amber-500/30"
-                        : "text-zinc-500"
+                <button
+                  type="button"
+                  disabled={isFuture || !onDayClick}
+                  onClick={() => onDayClick?.(dateKey, checked ? logs[dateKey]?.weight : undefined)}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all ${
+                    isFuture
+                      ? "text-zinc-700 cursor-default"
+                      : isToday
+                        ? "bg-amber-500 text-black font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-400"
+                        : checked
+                          ? "bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20"
+                          : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
                   }`}
                 >
                   {d}
-                </div>
+                </button>
                 {checked && !isToday && (
                   <div className="absolute bottom-0.5 w-1 h-1 rounded-full bg-amber-500/60" />
                 )}
@@ -139,17 +155,30 @@ function CheckInCalendar() {
   );
 }
 
-/** Weight input modal for daily check-in */
+/** Weight input modal for daily check-in — supports backfill for past dates */
 function CheckInModal({
   open,
   onClose,
   onConfirm,
+  date,
+  initialWeight,
 }: {
   open: boolean;
   onClose: () => void;
   onConfirm: (weight: number) => void;
+  date?: string;
+  initialWeight?: number;
 }) {
   const [weight, setWeight] = useState("");
+
+  // Pre-fill weight when opening with initialWeight
+  useEffect(() => {
+    if (open && initialWeight !== undefined) {
+      setWeight(String(initialWeight));
+    } else if (!open) {
+      setWeight("");
+    }
+  }, [open, initialWeight]);
 
   if (!open) return null;
 
@@ -162,13 +191,25 @@ function CheckInModal({
     onClose();
   };
 
+  const n = new Date();
+  const todayStr = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  const isToday = !date || date === todayStr;
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <form
         onSubmit={handleSubmit}
         className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-sm shadow-2xl"
       >
-        <h2 className="text-xl font-bold text-white mb-4">今日打卡 · 体重录入</h2>
+        <h2 className="text-xl font-bold text-white mb-1">
+          {isToday ? "今日打卡 · 体重录入" : "补打卡 · 体重录入"}
+        </h2>
+        {date && (
+          <p className="text-sm text-zinc-400 mb-3">
+            日期: <span className="text-amber-400">{date}</span>
+            {isToday && <span className="text-zinc-600 ml-1">(今天)</span>}
+          </p>
+        )}
         <div className="mb-4">
           <label className="block text-sm text-zinc-400 mb-1">晨起体重 (kg)</label>
           <input
@@ -194,7 +235,7 @@ function CheckInModal({
             disabled={!weight || parseFloat(weight) <= 0}
             className="flex-1 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-bold transition"
           >
-            确认打卡
+            {isToday ? "确认打卡" : "确认补打卡"}
           </button>
         </div>
       </form>
@@ -249,7 +290,8 @@ function NutritionDashboard({ targets }: { targets: NutritionTargets }) {
   const removeFoodFromMeal = useFitnessStore((s) => s.removeFoodFromMeal);
 
   // Derive today's meals from raw data — subscribing to s.meals triggers re-render on change
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const emptySlot = () => ({ foods: [] as never[], protein: 0, carbs: 0, fat: 0, kcal: 0 });
   const todayMeals = mealsData[todayKey] ?? { breakfast: emptySlot(), lunch: emptySlot(), dinner: emptySlot(), snack: emptySlot() };
   const { breakfast, lunch, dinner, snack } = todayMeals;
@@ -371,22 +413,37 @@ function MealSlotEditor({
   label: string;
   emoji: string;
   meal: MealEntry;
-  onAddFood: (slot: keyof DailyMeals, foodId: string, weight: number) => void;
-  onRemoveFood: (slot: keyof DailyMeals, index: number) => void;
+  onAddFood: (slot: keyof DailyMeals, foodId: string, weight: number) => Promise<boolean>;
+  onRemoveFood: (slot: keyof DailyMeals, index: number) => Promise<boolean>;
 }) {
   const [search, setSearch] = useState("");
   const [weight, setWeight] = useState("100");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const results = searchFoods(search);
 
-  const handleSelectFood = (food: FoodItem) => {
+  const handleSelectFood = async (food: FoodItem) => {
     const w = parseFloat(weight);
     if (isNaN(w) || w <= 0) return;
-    onAddFood(slot, food.id, w);
-    setSearch("");
-    setWeight("100");
-    setShowDropdown(false);
+    const ok = await onAddFood(slot, food.id, w);
+    if (ok) {
+      setSearch("");
+      setWeight("100");
+      setShowDropdown(false);
+      setError(null);
+    } else {
+      setError("保存失败，请检查数据库连接后重试");
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  const handleRemoveFood = async (index: number) => {
+    const ok = await onRemoveFood(slot, index);
+    if (!ok) {
+      setError("删除失败，请检查数据库连接后重试");
+      setTimeout(() => setError(null), 5000);
+    }
   };
 
   const handleAdd = () => {
@@ -462,6 +519,14 @@ function MealSlotEditor({
         </button>
       </div>
 
+      {/* Error feedback */}
+      {error && (
+        <div className="mb-2 bg-red-500/10 border border-red-500/30 rounded px-2 py-1 text-[10px] text-red-400 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 ml-2">✕</button>
+        </div>
+      )}
+
       {/* Food list */}
       {meal.foods && meal.foods.length > 0 ? (
         <div className="space-y-1 mb-2">
@@ -476,7 +541,7 @@ function MealSlotEditor({
                 </span>
                 <button
                   type="button"
-                  onClick={() => onRemoveFood(slot, i)}
+                  onClick={() => handleRemoveFood(i)}
                   className="text-zinc-500 hover:text-red-400 transition ml-1 text-sm leading-none"
                 >
                   ✕
@@ -555,21 +620,21 @@ function ExerciseLogger({ onPR }: { onPR: (pr: PRResult) => void }) {
     setTipOpen(false);
   };
 
-  const handleAddCustom = () => {
+  const handleAddCustom = async () => {
     const name = customName.trim();
     if (!name) return;
-    const def = addCustomExercise(name, category);
+    const def = await addCustomExercise(name, category);
     setSelectedExId(def.id);
     setCustomName("");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const w = parseFloat(weight);
     const r = parseInt(reps);
     if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return;
 
-    const result = logSet(selectedExId, category, w, r);
+    const result = await logSet(selectedExId, category, w, r);
     if (result?.isPR) {
       onPR(result);
     }
@@ -930,15 +995,290 @@ function TipsPanel() {
   );
 }
 
+/** Food nutrition database manager — view/edit/add/delete food items */
+function FoodDatabaseManager() {
+  const [foods, setFoods] = useState<FoodItem[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<FoodItem>>({});
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addForm, setAddForm] = useState({
+    id: "", name: "", category: "肉类" as string,
+    proteinPer100g: 0, carbsPer100g: 0, fatPer100g: 0,
+  });
+  const [searchFilter, setSearchFilter] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshFoodItems = useFitnessStore((s) => s.refreshFoodItems);
+
+  useEffect(() => { setFoods(getAllFoods()); }, []);
+
+  const recalcKcal = (protein: number, carbs: number, fat: number) =>
+    Math.round(protein * 4 + carbs * 4 + fat * 9);
+
+  const startEdit = (food: FoodItem) => { setEditingId(food.id); setEditForm({ ...food }); setError(null); };
+  const cancelEdit = () => { setEditingId(null); setEditForm({}); setError(null); };
+
+  const saveEdit = async () => {
+    if (!editingId || !editForm.name || !editForm.category) return;
+    const res = await fetch("/api/admin/foods", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...editForm, id: editingId }),
+    });
+    if (res.ok) {
+      await refreshFoodItems(); setFoods(getAllFoods());
+      setEditingId(null); setEditForm({}); setError(null);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "保存失败，请重试");
+    }
+  };
+
+  const confirmAdd = async () => {
+    if (!addForm.name || !addForm.id) return;
+    const res = await fetch("/api/admin/foods", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(addForm),
+    });
+    if (res.ok) {
+      await refreshFoodItems(); setFoods(getAllFoods());
+      setShowAddForm(false);
+      setAddForm({ id: "", name: "", category: "肉类", proteinPer100g: 0, carbsPer100g: 0, fatPer100g: 0 });
+      setError(null);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "添加失败，请重试");
+    }
+  };
+
+  const deleteFood = async (id: string) => {
+    if (!confirm("确定删除该食物吗？")) return;
+    const res = await fetch("/api/admin/foods", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      await refreshFoodItems(); setFoods(getAllFoods()); setError(null);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "删除失败，请重试");
+    }
+  };
+
+  const categories: FoodCategory[] = ["肉类", "主食", "蔬菜", "水果", "乳制品", "蛋类", "豆制品", "零食", "其他"];
+
+  const filteredFoods = searchFilter.trim()
+    ? foods.filter((f) =>
+        f.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        f.category.includes(searchFilter)
+      )
+    : foods;
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      {/* Error banner */}
+      {error && (
+        <div className="mb-3 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 flex items-center justify-between">
+          <span className="text-xs text-red-400">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 text-sm ml-2">✕</button>
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text" value={searchFilter}
+          onChange={(e) => setSearchFilter(e.target.value)}
+          placeholder="筛选食物…"
+          className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-zinc-600"
+        />
+        <button
+          type="button" onClick={() => setShowAddForm(true)}
+          className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition shrink-0"
+        >
+          + 添加食物
+        </button>
+      </div>
+
+      {/* Add form */}
+      {showAddForm && (
+        <div className="mb-3 bg-zinc-800/50 border border-emerald-500/30 rounded-lg p-3">
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <input type="text" value={addForm.name} placeholder="食物名称"
+              onChange={(e) => setAddForm({ ...addForm, name: e.target.value, id: e.target.value.toLowerCase().replace(/\s+/g, "-") })}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            <select value={addForm.category}
+              onChange={(e) => setAddForm({ ...addForm, category: e.target.value })}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500">
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-zinc-500 w-10">蛋白</span>
+              <input type="number" step="0.1" min="0" value={addForm.proteinPer100g}
+                onChange={(e) => setAddForm({ ...addForm, proteinPer100g: parseFloat(e.target.value) || 0 })}
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white text-center focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-zinc-500 w-10">碳水</span>
+              <input type="number" step="0.1" min="0" value={addForm.carbsPer100g}
+                onChange={(e) => setAddForm({ ...addForm, carbsPer100g: parseFloat(e.target.value) || 0 })}
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white text-center focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-zinc-500 w-10">脂肪</span>
+              <input type="number" step="0.1" min="0" value={addForm.fatPer100g}
+                onChange={(e) => setAddForm({ ...addForm, fatPer100g: parseFloat(e.target.value) || 0 })}
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white text-center focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-zinc-500 w-10">热量</span>
+              <span className="text-xs text-amber-400 font-mono">
+                {recalcKcal(addForm.proteinPer100g, addForm.carbsPer100g, addForm.fatPer100g)} kcal
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={confirmAdd} disabled={!addForm.name || !addForm.id}
+              className="px-3 py-1 text-xs rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium transition">确认添加</button>
+            <button onClick={() => setShowAddForm(false)}
+              className="px-3 py-1 text-xs rounded border border-zinc-600 text-zinc-400 hover:text-white transition">取消</button>
+          </div>
+        </div>
+      )}
+
+      {/* Food table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-zinc-500 border-b border-zinc-800">
+              <th className="text-left py-2 pr-2 font-medium">名称</th>
+              <th className="text-left py-2 px-2 font-medium w-16">分类</th>
+              <th className="text-right py-2 px-2 font-medium w-14">蛋白g</th>
+              <th className="text-right py-2 px-2 font-medium w-14">碳水g</th>
+              <th className="text-right py-2 px-2 font-medium w-14">脂肪g</th>
+              <th className="text-right py-2 px-2 font-medium w-14">热量</th>
+              <th className="text-center py-2 pl-2 font-medium w-16">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredFoods.map((food) =>
+              editingId === food.id ? (
+                <tr key={food.id} className="border-b border-zinc-800/50 bg-emerald-500/5">
+                  <td className="py-1.5 pr-2">
+                    <input type="text" value={editForm.name || ""}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  </td>
+                  <td className="py-1.5 px-2">
+                    <select value={editForm.category || "肉类"}
+                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value as FoodCategory })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-1 py-1 text-xs text-white">
+                      {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </td>
+                  <td className="py-1.5 px-2">
+                    <input type="number" step="0.1" min="0" value={editForm.proteinPer100g ?? 0}
+                      onChange={(e) => setEditForm({ ...editForm, proteinPer100g: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-1 py-1 text-xs text-white text-right focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  </td>
+                  <td className="py-1.5 px-2">
+                    <input type="number" step="0.1" min="0" value={editForm.carbsPer100g ?? 0}
+                      onChange={(e) => setEditForm({ ...editForm, carbsPer100g: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-1 py-1 text-xs text-white text-right focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  </td>
+                  <td className="py-1.5 px-2">
+                    <input type="number" step="0.1" min="0" value={editForm.fatPer100g ?? 0}
+                      onChange={(e) => setEditForm({ ...editForm, fatPer100g: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-1 py-1 text-xs text-white text-right focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  </td>
+                  <td className="py-1.5 px-2 text-right text-amber-400 font-mono">
+                    {recalcKcal(editForm.proteinPer100g || 0, editForm.carbsPer100g || 0, editForm.fatPer100g || 0)}
+                  </td>
+                  <td className="py-1.5 pl-2">
+                    <div className="flex gap-1 justify-center">
+                      <button onClick={saveEdit} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-500 transition">保存</button>
+                      <button onClick={cancelEdit} className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-600 text-zinc-400 hover:text-white transition">取消</button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={food.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition"
+                  onClick={() => startEdit(food)}>
+                  <td className="py-1.5 pr-2 text-white truncate max-w-[120px]">{food.name}</td>
+                  <td className="py-1.5 px-2 text-zinc-400">{food.category}</td>
+                  <td className="py-1.5 px-2 text-right text-zinc-300 font-mono">{food.proteinPer100g}</td>
+                  <td className="py-1.5 px-2 text-right text-zinc-300 font-mono">{food.carbsPer100g}</td>
+                  <td className="py-1.5 px-2 text-right text-zinc-300 font-mono">{food.fatPer100g}</td>
+                  <td className="py-1.5 px-2 text-right text-amber-400 font-mono">{food.kcalPer100g}</td>
+                  <td className="py-1.5 pl-2 text-center" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => deleteFood(food.id)}
+                      className="text-[10px] px-1.5 py-0.5 rounded text-red-400 hover:bg-red-500/10 hover:text-red-300 transition">删除</button>
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+        {filteredFoods.length === 0 && (
+          <div className="text-center text-zinc-600 py-6 text-sm">暂无食物数据</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // Main Admin Page
 // ============================================================
 
 export default function AdminPage() {
   const [checkInOpen, setCheckInOpen] = useState(false);
+  // Backfill state
+  const [backfillDate, setBackfillDate] = useState<string | null>(null);
+  const [backfillExistingWeight, setBackfillExistingWeight] = useState<number | undefined>(undefined);
+  // Auth state
+  const authenticated = useFitnessStore((s) => s.authenticated);
+  const loaded = useFitnessStore((s) => s.loaded);
+  const loading = useFitnessStore((s) => s.loading);
+  const checkAuth = useFitnessStore((s) => s.checkAuth);
+  const login = useFitnessStore((s) => s.login);
+  const loadData = useFitnessStore((s) => s.loadData);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginPending, setLoginPending] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    checkAuth().then(() => setAuthChecked(true));
+  }, [checkAuth]);
+
+  useEffect(() => {
+    if (authenticated && !loaded && !loading) {
+      loadData();
+    }
+  }, [authenticated, loaded, loading, loadData]);
+
+  const handleLogin = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!loginPassword.trim()) return;
+      setLoginPending(true);
+      setLoginError("");
+      const ok = await login(loginPassword);
+      setLoginPending(false);
+      if (!ok) {
+        setLoginError("密码错误");
+      }
+    },
+    [login, loginPassword]
+  );
+
   const [prEvent, setPrEvent] = useState<PRResult | null>(null);
 
   const checkIn = useFitnessStore((s) => s.checkIn);
+  const refreshFoodItems = useFitnessStore((s) => s.refreshFoodItems);
   const hasCheckedInToday = useFitnessStore((s) => s.hasCheckedInToday);
   const todayLog = useFitnessStore((s) => s.todayLog);
   const nutritionTargets = useFitnessStore((s) => s.nutritionTargets);
@@ -947,6 +1287,57 @@ export default function AdminPage() {
 
   const targets = latestWeight ? computeNutrition(latestWeight) : nutritionTargets();
 
+  // Auth gate — show loading or login form
+  if (!authChecked) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+        <div className="text-zinc-500 text-sm">加载中…</div>
+      </main>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+        <form
+          onSubmit={handleLogin}
+          className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-sm shadow-2xl"
+        >
+          <h1 className="text-xl font-bold text-white mb-2">管理员登录</h1>
+          <p className="text-xs text-zinc-500 mb-4">请输入管理密码以访问控制台</p>
+          <input
+            type="password"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            placeholder="输入密码"
+            autoFocus
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-white text-lg focus:outline-none focus:ring-2 focus:ring-amber-500 mb-3"
+          />
+          {loginError && (
+            <p className="text-red-400 text-xs mb-3">{loginError}</p>
+          )}
+          <button
+            type="submit"
+            disabled={!loginPassword.trim() || loginPending}
+            className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-bold transition"
+          >
+            {loginPending ? "验证中…" : "登录"}
+          </button>
+        </form>
+      </main>
+    );
+  }
+
+  // Loading data after auth
+  if (!loaded) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+        <div className="text-zinc-500 text-sm">正在同步数据…</div>
+      </main>
+    );
+  }
+
+  // ---- Authenticated admin UI ----
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
       <div className="max-w-2xl mx-auto px-4 py-6">
@@ -974,7 +1365,12 @@ export default function AdminPage() {
 
         {/* ---- Calendar ---- */}
         <section className="mb-6">
-          <CheckInCalendar />
+          <CheckInCalendar
+            onDayClick={(dateKey, existingWeight) => {
+              setBackfillDate(dateKey);
+              setBackfillExistingWeight(existingWeight);
+            }}
+          />
         </section>
 
         {/* ---- Sections ---- */}
@@ -1014,6 +1410,15 @@ export default function AdminPage() {
             </h2>
             <TipsPanel />
           </section>
+
+          {/* Section D: 食物数据库管理 */}
+          <section>
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+              <span className="w-1 h-5 bg-emerald-500 rounded-full" />
+              食物数据库管理
+            </h2>
+            <FoodDatabaseManager />
+          </section>
         </div>
 
         {/* Footer nav */}
@@ -1024,11 +1429,21 @@ export default function AdminPage() {
         </nav>
       </div>
 
-      {/* Check-in Modal */}
+      {/* Check-in Modal — handles both today and backfill */}
       <CheckInModal
-        open={checkInOpen}
-        onClose={() => setCheckInOpen(false)}
-        onConfirm={(w) => checkIn(w)}
+        open={checkInOpen || backfillDate !== null}
+        onClose={() => { setCheckInOpen(false); setBackfillDate(null); }}
+        onConfirm={(w) => {
+          if (backfillDate) {
+            checkIn(w, backfillDate);
+            setBackfillDate(null);
+          } else {
+            checkIn(w);
+            setCheckInOpen(false);
+          }
+        }}
+        date={backfillDate ?? undefined}
+        initialWeight={backfillExistingWeight}
       />
 
       {/* PR Celebration Overlay */}

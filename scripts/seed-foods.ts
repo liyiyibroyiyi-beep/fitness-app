@@ -1,19 +1,38 @@
-// ============================================================
-// Food Database — 常见健身食物营养成分 (per 100g)
-// ============================================================
-// kcal = protein*4 + carbs*4 + fat*9 (近似值，用于一致性)
-//
-// Mutable module-level cache:
-// - Initialized from FALLBACK hardcoded data
-// - setFoodItems() replaces the cache with DB-loaded data
-// - getFoodById / searchFoods / getFoodsByCategory read from the cache
-// ============================================================
+// scripts/seed-foods.ts
+// Run with: npx tsx scripts/seed-foods.ts
+// Seeds the food_items table with 42 common fitness foods.
+import { neon } from "@neondatabase/serverless";
+import * as fs from "fs";
+import * as path from "path";
 
-import type { FoodItem, FoodCategory } from "@/lib/types";
+// Load .env.local if DATABASE_URL is not already set
+if (!process.env.DATABASE_URL) {
+  const envPath = path.join(__dirname, "..", ".env.local");
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, "utf-8");
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("#")) {
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const value = trimmed.slice(eqIdx + 1).trim();
+          if (!process.env[key]) process.env[key] = value;
+        }
+      }
+    }
+  }
+}
 
-// Fallback data (42 items) — used until setFoodItems() is called with DB data
-const FALLBACK: FoodItem[] = [
-  // ====== 肉类 ======
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error("DATABASE_URL environment variable is not set.");
+  process.exit(1);
+}
+
+const sql = neon(DATABASE_URL);
+
+const foods = [
   { id: "chicken-breast", name: "鸡胸肉", category: "肉类", proteinPer100g: 23.1, carbsPer100g: 0, fatPer100g: 1.2, kcalPer100g: 103 },
   { id: "chicken-thigh", name: "鸡腿肉", category: "肉类", proteinPer100g: 20.2, carbsPer100g: 0, fatPer100g: 7.2, kcalPer100g: 146 },
   { id: "beef-lean", name: "瘦牛肉", category: "肉类", proteinPer100g: 21.3, carbsPer100g: 0, fatPer100g: 4.2, kcalPer100g: 123 },
@@ -23,12 +42,8 @@ const FALLBACK: FoodItem[] = [
   { id: "shrimp", name: "虾仁", category: "肉类", proteinPer100g: 20.3, carbsPer100g: 0.2, fatPer100g: 0.7, kcalPer100g: 88 },
   { id: "tilapia", name: "罗非鱼/鲫鱼", category: "肉类", proteinPer100g: 18.3, carbsPer100g: 0, fatPer100g: 1.6, kcalPer100g: 88 },
   { id: "lamb-leg", name: "羊腿肉", category: "肉类", proteinPer100g: 20.2, carbsPer100g: 0, fatPer100g: 8.5, kcalPer100g: 157 },
-
-  // ====== 蛋类 ======
   { id: "egg-whole", name: "鸡蛋(整)", category: "蛋类", proteinPer100g: 13.3, carbsPer100g: 1.5, fatPer100g: 9.5, kcalPer100g: 145 },
   { id: "egg-white", name: "蛋白", category: "蛋类", proteinPer100g: 11.0, carbsPer100g: 0.7, fatPer100g: 0.2, kcalPer100g: 49 },
-
-  // ====== 主食 ======
   { id: "rice-white", name: "白米饭", category: "主食", proteinPer100g: 2.7, carbsPer100g: 28.0, fatPer100g: 0.3, kcalPer100g: 126 },
   { id: "rice-brown", name: "糙米饭", category: "主食", proteinPer100g: 2.8, carbsPer100g: 23.0, fatPer100g: 0.9, kcalPer100g: 112 },
   { id: "noodle-wheat", name: "面条(煮)", category: "主食", proteinPer100g: 3.4, carbsPer100g: 25.0, fatPer100g: 0.5, kcalPer100g: 118 },
@@ -37,8 +52,6 @@ const FALLBACK: FoodItem[] = [
   { id: "sweet-potato", name: "红薯", category: "主食", proteinPer100g: 1.6, carbsPer100g: 20.1, fatPer100g: 0.1, kcalPer100g: 88 },
   { id: "corn", name: "玉米", category: "主食", proteinPer100g: 3.3, carbsPer100g: 19.0, fatPer100g: 1.2, kcalPer100g: 100 },
   { id: "oats", name: "燕麦(即食)", category: "主食", proteinPer100g: 13.5, carbsPer100g: 60.0, fatPer100g: 7.0, kcalPer100g: 357 },
-
-  // ====== 蔬菜 ======
   { id: "broccoli", name: "西兰花", category: "蔬菜", proteinPer100g: 2.8, carbsPer100g: 4.0, fatPer100g: 0.4, kcalPer100g: 31 },
   { id: "spinach", name: "菠菜", category: "蔬菜", proteinPer100g: 2.6, carbsPer100g: 2.8, fatPer100g: 0.4, kcalPer100g: 25 },
   { id: "tomato", name: "番茄", category: "蔬菜", proteinPer100g: 0.9, carbsPer100g: 3.5, fatPer100g: 0.2, kcalPer100g: 19 },
@@ -46,27 +59,19 @@ const FALLBACK: FoodItem[] = [
   { id: "lettuce", name: "生菜", category: "蔬菜", proteinPer100g: 1.2, carbsPer100g: 1.5, fatPer100g: 0.2, kcalPer100g: 13 },
   { id: "carrot", name: "胡萝卜", category: "蔬菜", proteinPer100g: 0.9, carbsPer100g: 8.8, fatPer100g: 0.2, kcalPer100g: 41 },
   { id: "bell-pepper", name: "彩椒", category: "蔬菜", proteinPer100g: 1.0, carbsPer100g: 4.6, fatPer100g: 0.2, kcalPer100g: 24 },
-
-  // ====== 水果 ======
   { id: "banana", name: "香蕉", category: "水果", proteinPer100g: 1.1, carbsPer100g: 22.8, fatPer100g: 0.3, kcalPer100g: 98 },
   { id: "apple", name: "苹果", category: "水果", proteinPer100g: 0.3, carbsPer100g: 14.0, fatPer100g: 0.2, kcalPer100g: 59 },
   { id: "blueberry", name: "蓝莓", category: "水果", proteinPer100g: 0.7, carbsPer100g: 14.5, fatPer100g: 0.3, kcalPer100g: 63 },
   { id: "orange", name: "橙子", category: "水果", proteinPer100g: 0.9, carbsPer100g: 11.8, fatPer100g: 0.1, kcalPer100g: 52 },
   { id: "avocado", name: "牛油果", category: "水果", proteinPer100g: 2.0, carbsPer100g: 8.5, fatPer100g: 14.7, kcalPer100g: 174 },
-
-  // ====== 乳制品 ======
   { id: "milk-whole", name: "全脂牛奶", category: "乳制品", proteinPer100g: 3.2, carbsPer100g: 4.9, fatPer100g: 3.5, kcalPer100g: 64 },
   { id: "milk-skim", name: "脱脂牛奶", category: "乳制品", proteinPer100g: 3.4, carbsPer100g: 5.0, fatPer100g: 0.1, kcalPer100g: 35 },
   { id: "yogurt-greek", name: "希腊酸奶", category: "乳制品", proteinPer100g: 10.0, carbsPer100g: 4.0, fatPer100g: 5.0, kcalPer100g: 101 },
   { id: "yogurt-plain", name: "原味酸奶", category: "乳制品", proteinPer100g: 3.5, carbsPer100g: 12.0, fatPer100g: 3.0, kcalPer100g: 89 },
   { id: "cheese-cheddar", name: "切达奶酪", category: "乳制品", proteinPer100g: 25.0, carbsPer100g: 1.3, fatPer100g: 33.0, kcalPer100g: 402 },
-
-  // ====== 豆制品 ======
   { id: "tofu-firm", name: "老豆腐", category: "豆制品", proteinPer100g: 8.1, carbsPer100g: 2.0, fatPer100g: 4.2, kcalPer100g: 78 },
   { id: "soy-milk", name: "豆浆", category: "豆制品", proteinPer100g: 3.5, carbsPer100g: 2.8, fatPer100g: 1.8, kcalPer100g: 42 },
   { id: "edamame", name: "毛豆", category: "豆制品", proteinPer100g: 11.9, carbsPer100g: 9.9, fatPer100g: 5.2, kcalPer100g: 134 },
-
-  // ====== 零食/补剂 ======
   { id: "protein-powder-whey", name: "乳清蛋白粉", category: "零食", proteinPer100g: 80.0, carbsPer100g: 7.0, fatPer100g: 3.0, kcalPer100g: 375 },
   { id: "almond", name: "杏仁", category: "零食", proteinPer100g: 21.2, carbsPer100g: 20.0, fatPer100g: 49.9, kcalPer100g: 614 },
   { id: "peanut-butter", name: "花生酱", category: "零食", proteinPer100g: 25.0, carbsPer100g: 20.0, fatPer100g: 50.0, kcalPer100g: 630 },
@@ -78,54 +83,21 @@ const FALLBACK: FoodItem[] = [
   { id: "nuts-mixed", name: "坚果(混合)", category: "零食", proteinPer100g: 16.9, carbsPer100g: 20, fatPer100g: 55.4, kcalPer100g: 646 },
 ];
 
-// ---- Mutable cache ----
-let foodCache: FoodItem[] = [...FALLBACK];
-let foodMap: Record<string, FoodItem> = {};
-let foodsByCategory: Record<string, FoodItem[]> = {};
+async function seed(): Promise<void> {
+  console.log(`Seeding ${foods.length} food items into food_items table...`);
 
-function rebuildIndex(): void {
-  foodMap = {};
-  foodsByCategory = {};
-  for (const f of foodCache) {
-    foodMap[f.id] = f;
-    if (!foodsByCategory[f.category]) foodsByCategory[f.category] = [];
-    foodsByCategory[f.category].push(f);
+  for (const f of foods) {
+    await sql`
+      INSERT INTO food_items (id, name, category, protein_per_100g, carbs_per_100g, fat_per_100g, kcal_per_100g)
+      VALUES (${f.id}, ${f.name}, ${f.category}, ${f.proteinPer100g}, ${f.carbsPer100g}, ${f.fatPer100g}, ${f.kcalPer100g})
+      ON CONFLICT (id) DO NOTHING
+    `;
   }
-}
-rebuildIndex();
 
-/** Replace the in-memory food database (called after DB load) */
-export function setFoodItems(items: FoodItem[]): void {
-  foodCache = items.length > 0 ? items : [...FALLBACK];
-  rebuildIndex();
+  console.log(`Seeded ${foods.length} food items successfully.`);
 }
 
-/** Get all food items */
-export function getAllFoods(): FoodItem[] {
-  return foodCache;
-}
-
-/** Get a food by its ID */
-export function getFoodById(id: string): FoodItem | undefined {
-  return foodMap[id];
-}
-
-/** Search foods by name or category (fuzzy match) */
-export function searchFoods(query: string): FoodItem[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return foodCache.slice(0, 15); // show first 15 when empty
-
-  const results = foodCache.filter((f) => {
-    return (
-      f.name.toLowerCase().includes(q) ||
-      f.category.toLowerCase().includes(q)
-    );
-  });
-
-  return results.slice(0, 12); // limit to 12 results
-}
-
-/** Get foods grouped by category */
-export function getFoodsByCategory(): Record<FoodCategory, FoodItem[]> {
-  return foodsByCategory as Record<FoodCategory, FoodItem[]>;
-}
+seed().catch((err) => {
+  console.error("Seed failed:", err);
+  process.exit(1);
+});
